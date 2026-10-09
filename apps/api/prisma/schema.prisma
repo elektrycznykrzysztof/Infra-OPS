@@ -1,0 +1,35 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model StorageSnapshot {
+  id         String   @id @default(cuid())
+  capturedAt DateTime @default(now())
+  reason     String
+  entries    StorageEntry[]
+
+  @@index([capturedAt])
+}
+
+model StorageEntry {
+  id            String   @id @default(cuid())
+  snapshotId    String
+  snapshot      StorageSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Cascade)
+  vmId          String
+  vmName        String
+  powerState    String?
+  dnsName       String?
+  capacityBytes BigInt
+  freeBytes     BigInt
+  usedBytes     BigInt
+  disks         Json
+
+  @@index([vmId])
+  @@index([snapshotId])
+}

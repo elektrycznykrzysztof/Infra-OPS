@@ -1,0 +1,25 @@
+{
+  "name": "@infra/api",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "prisma:generate": "prisma generate",
+    "prisma:deploy": "prisma migrate deploy"
+  },
+  "dependencies": {
+    "@elysiajs/static": "^1.3.0",
+    "@prisma/client": "^6.16.2",
+    "croner": "^9.1.0",
+    "elysia": "^1.3.21",
+    "fast-xml-parser": "^5.2.5",
+    "ssh2": "^1.17.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/ssh2": "^1.15.5",
+    "prisma": "^6.16.2",
+    "typescript": "^5.9.2"
+  }
+}

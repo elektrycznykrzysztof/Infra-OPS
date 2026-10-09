@@ -1,0 +1,9 @@
+node_modules
+dist
+.env
+outputs/
+apps/api/generated
+*.log
+*.tsbuildinfo
+.DS_Store
+.sites-runtime

@@ -1,0 +1,8 @@
+{
+  "name": "@infra/bot",
+  "private": true,
+  "type": "module",
+  "scripts": { "start": "bun src/index.ts" },
+  "dependencies": { "discord.js": "^14.22.1" },
+  "devDependencies": { "@types/bun": "latest", "typescript": "^5.9.2" }
+}
