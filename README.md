@@ -28,6 +28,14 @@ Bot Discord jest opcjonalny i działa w osobnym profilu:
 docker compose --profile discord up -d --build
 ```
 
+Dostęp do komend bota ogranicza lista identyfikatorów użytkowników Discord w `.env`:
+
+```env
+DISCORD_ALLOWED_USER_IDS=ID_UZYTKOWNIKA_1,ID_UZYTKOWNIKA_2
+```
+
+Po zmianie listy odtwórz kontener bota: `docker compose --profile discord up -d --force-recreate bot`. Starsza zmienna `DISCORD_ALLOWED_USER_ID` nadal działa jako pojedynczy identyfikator, jeśli `DISCORD_ALLOWED_USER_IDS` jest pusta.
+
 ## Bezpieczeństwo i reverse proxy
 
 - Port API jest publikowany na wszystkich interfejsach hosta (`0.0.0.0:3011`). Dostęp ogranicz firewallem do zaufanych sieci lub adresów źródłowych.

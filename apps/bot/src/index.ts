@@ -1,7 +1,10 @@
 import { ActionRowBuilder, ButtonBuilder, ButtonStyle, Client, GatewayIntentBits, MessageFlags, REST, Routes, SlashCommandBuilder } from "discord.js";
 
-const required = ["DISCORD_TOKEN", "DISCORD_CLIENT_ID", "DISCORD_GUILD_ID", "DISCORD_ALLOWED_USER_ID", "APP_USERNAME", "APP_PASSWORD"] as const;
+const required = ["DISCORD_TOKEN", "DISCORD_CLIENT_ID", "DISCORD_GUILD_ID", "APP_USERNAME", "APP_PASSWORD"] as const;
 for (const key of required) if (!process.env[key]) { console.error(`Brak zmiennej ${key}`); process.exit(1); }
+const allowedUserIdsValue = process.env.DISCORD_ALLOWED_USER_IDS?.trim() || process.env.DISCORD_ALLOWED_USER_ID || "";
+const allowedUserIds = new Set(allowedUserIdsValue.split(",").map((id) => id.trim()).filter(Boolean));
+if (!allowedUserIds.size) { console.error("Brak zmiennej DISCORD_ALLOWED_USER_IDS (lista ID oddzielonych przecinkami)"); process.exit(1); }
 const baseUrl = process.env.DISCORD_API_BASE_URL || "http://api:3011";
 const authorization = `Basic ${btoa(`${process.env.APP_USERNAME}:${process.env.APP_PASSWORD}`)}`;
 async function api(path: string, init?: RequestInit) {
@@ -55,7 +58,7 @@ function renderVmList(state: VmListState, id: string) {
 }
 
 client.on("interactionCreate", async (interaction) => {
-  if (interaction.user.id !== process.env.DISCORD_ALLOWED_USER_ID) {
+  if (!allowedUserIds.has(interaction.user.id)) {
     if (interaction.isRepliable()) await interaction.reply({ content: "Brak uprawnień.", flags: MessageFlags.Ephemeral }); return;
   }
   try {
