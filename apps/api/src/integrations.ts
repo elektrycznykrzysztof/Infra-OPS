@@ -468,5 +468,20 @@ export async function getSophosVpn() {
 
 export async function setSophosVpn(name: string, active: boolean) {
   if (!configured("sophos")) throw new UpstreamError("Sophos", 503, "Integracja nie jest skonfigurowana");
-  return sophosXml(`<Set operation="update"><VPNIPSecConnection><Name>${xmlEscape(name)}</Name><Status>${active ? "Active" : "DeActive"}</Status></VPNIPSecConnection></Set>`);
+  const action = active ? "Active" : "DeActive";
+  const data: any = await sophosXml(`<Set><VPNIPSecConnection><${action}><Name>${xmlEscape(name)}</Name></${action}></VPNIPSecConnection></Set>`);
+  const status = data?.Response?.Set?.Status;
+  const code = String(status?.code ?? status?.Code ?? status?.["@_code"] ?? "");
+  const message = String(status?.["#text"] ?? status?.message ?? (typeof status === "string" ? status : "")).trim();
+  if (code && code !== "200") {
+    throw new UpstreamError("Sophos", 502, `Sophos nie potwierdził ${active ? "włączenia" : "wyłączenia"} tunelu ${name}${code ? ` (kod ${code})` : ""}${message ? `: ${message}` : "."}`);
+  }
+  if (!code) {
+    const current = await getSophosVpn();
+    const observed = current.find((vpn: any) => normalizedVpnText(vpn.name) === normalizedVpnText(name));
+    if (observed?.active !== active) {
+      throw new UpstreamError("Sophos", 502, `Nie udało się potwierdzić ${active ? "włączenia" : "wyłączenia"} tunelu ${name}${message ? `: ${message}` : " — stan odczytany z firewalla nie odpowiada żądaniu."}`);
+    }
+  }
+  return { ok: true, active, message: message || `Tunel ${active ? "włączony" : "wyłączony"}` };
 }

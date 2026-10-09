@@ -47,7 +47,11 @@ async function changeVm(vm: any, action: string) {
 async function changeVpn(vpn: any) {
   if (typeof vpn.active !== "boolean") return;
   if (!confirm(`${vpn.active ? 'Wyłączyć' : 'Włączyć'} tunel ${vpn.name}?`)) return;
-  await api(`/api/sophos/vpn/${encodeURIComponent(vpn.name)}/activation`, { method: "POST", body: JSON.stringify({ active: !vpn.active }) }); await refresh();
+  error.value = "";
+  try {
+    const result = await api<{ active: boolean }>(`/api/sophos/vpn/${encodeURIComponent(vpn.name)}/activation`, { method: "POST", body: JSON.stringify({ active: !vpn.active }) });
+    vpn.active = result.active;
+  } catch (e) { error.value = (e as Error).message; }
 }
 async function capture() { loading.value = true; try { await api("/api/veeam-one/storage-usage/capture", { method: "POST", body: "{}" }); await refresh(); } catch (e) { error.value = (e as Error).message; loading.value = false; } }
 function selectTab(tab: Tab) { active.value = tab; query.value = ""; refresh(); }
