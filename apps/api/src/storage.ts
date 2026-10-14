@@ -3,6 +3,7 @@ import { Cron } from "croner";
 import { getStorageUsage } from "./integrations";
 import { configured } from "./config";
 import { normalizeStorageEntry } from "./storage-disks";
+import { recordSnapshotDatabaseFailure, resetSnapshotDatabaseFailures } from "./snapshot-alert";
 
 const databaseEnabled = Boolean(process.env.DATABASE_URL?.trim());
 const prisma = databaseEnabled ? new PrismaClient() : null;
@@ -18,16 +19,23 @@ export async function captureStorage(reason: "startup" | "manual" | "scheduled")
   if (!prisma) return { enabled: false, captured: 0 };
   if (!configured("veeamOne")) return { enabled: true, configured: false, captured: 0 };
   const entries = await getStorageUsage();
-  const snapshot = await prisma.storageSnapshot.create({
-    data: {
-      reason,
-      entries: { create: entries.map((item: any) => ({
-        vmId: item.id, vmName: item.name || item.id, powerState: item.powerState || null, dnsName: item.dnsName || null,
-        capacityBytes: BigInt(Math.round(item.capacityBytes || 0)), freeBytes: BigInt(Math.round(item.freeBytes || 0)),
-        usedBytes: BigInt(Math.round(item.usedBytes || 0)), disks: item.disks || []
-      })) }
-    }
-  });
+  let snapshot;
+  try {
+    snapshot = await prisma.storageSnapshot.create({
+      data: {
+        reason,
+        entries: { create: entries.map((item: any) => ({
+          vmId: item.id, vmName: item.name || item.id, powerState: item.powerState || null, dnsName: item.dnsName || null,
+          capacityBytes: BigInt(Math.round(item.capacityBytes || 0)), freeBytes: BigInt(Math.round(item.freeBytes || 0)),
+          usedBytes: BigInt(Math.round(item.usedBytes || 0)), disks: item.disks || []
+        })) }
+      }
+    });
+  } catch (error) {
+    await recordSnapshotDatabaseFailure("snapshot zapis", error);
+    throw error;
+  }
+  await resetSnapshotDatabaseFailures();
   return { enabled: true, snapshotId: snapshot.id, captured: entries.length, reason };
 }
 
@@ -65,10 +73,21 @@ export async function vmStorageHistory(vmId: string) {
 
 export async function startStorageSchedule() {
   if (!prisma) return;
-  const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
-  const count = await prisma.storageSnapshot.count({ where: { capturedAt: { gte: startOfDay } } });
-  if (!count) captureStorage("startup").catch((error) => console.error("Startup snapshot:", error.message));
   new Cron(process.env.STORAGE_COLLECTION_CRON || "0 * * * *", async () => {
     try { await captureStorage("scheduled"); } catch (error) { console.error("Scheduled snapshot:", (error as Error).message); }
   });
+
+  const startOfDay = new Date(); startOfDay.setHours(0, 0, 0, 0);
+  let count: number;
+  try {
+    count = await prisma.storageSnapshot.count({ where: { capturedAt: { gte: startOfDay } } });
+  } catch (error) {
+    await recordSnapshotDatabaseFailure("sprawdzenie dzisiejszych snapshotów", error);
+    console.error("Storage snapshot check:", (error as Error).message);
+    return;
+  }
+  await resetSnapshotDatabaseFailures();
+  if (!count) {
+    try { await captureStorage("startup"); } catch (error) { console.error("Startup snapshot:", (error as Error).message); }
+  }
 }

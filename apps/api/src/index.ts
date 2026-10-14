@@ -5,6 +5,7 @@ import { hasValidBasicAuth, assertOrigin, UpstreamError } from "./http";
 import { getNetappInventory, getSophosVpn, getVcenterTree, getVeeamSessions, powerVm, setSophosVpn } from "./integrations";
 import { captureStorage, latestStorage, startStorageSchedule, storageGrowth, vmStorageHistory } from "./storage";
 import { createSshSession } from "./ssh";
+import { sendConfiguredTestEmail } from "./snapshot-alert";
 
 if (!config.auth.username || !config.auth.password) {
   console.error("APP_USERNAME i APP_PASSWORD są wymagane"); process.exit(1);
@@ -30,6 +31,7 @@ const app = new Elysia()
       sophos: configured("sophos"), netapp: configured("netapp"), terminal: true
     }
   }))
+  .post("/api/admin/test-email", ({ request }) => { assertOrigin(request); return sendConfiguredTestEmail(); })
   .get("/api/veeam/sessions", () => getVeeamSessions())
   .get("/api/veeam-one/storage-usage", () => latestStorage())
   .post("/api/veeam-one/storage-usage/capture", ({ request }) => { assertOrigin(request); return captureStorage("manual"); })

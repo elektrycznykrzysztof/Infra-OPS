@@ -14,6 +14,7 @@
     "croner": "^9.1.0",
     "elysia": "^1.3.21",
     "fast-xml-parser": "^5.2.5",
+    "nodemailer": "^10.1.0",
     "ssh2": "^1.17.0"
   },
   "devDependencies": {

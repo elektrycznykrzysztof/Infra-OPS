@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { Activity, Box, ChevronDown, Database, HardDrive, Palette, Power, RefreshCw, Search, Server, ShieldCheck, TerminalSquare, TriangleAlert, Wifi, WifiOff, X } from "lucide-vue-next";
+import { Activity, Box, ChevronDown, Database, HardDrive, Mail, Palette, Power, RefreshCw, Search, Server, ShieldCheck, TerminalSquare, TriangleAlert, Wifi, WifiOff, X } from "lucide-vue-next";
 import TerminalPanel from "./TerminalPanel.vue";
 import StorageGrowthChart from "./StorageGrowthChart.vue";
 import { readThemePreference, themeOptions, themeStorageKey, type ThemeId } from "./theme";
 
-type Tab = "veeam" | "vmware" | "sophos" | "netapp" | "terminal";
+type Tab = "veeam" | "vmware" | "sophos" | "netapp" | "terminal" | "administration";
 const tabs = [
   { id: "veeam" as Tab, label: "Veeam", icon: Database }, { id: "vmware" as Tab, label: "VMware", icon: Box },
   { id: "sophos" as Tab, label: "Sophos", icon: ShieldCheck }, { id: "netapp" as Tab, label: "NetApp", icon: HardDrive },
-  { id: "terminal" as Tab, label: "Terminal", icon: TerminalSquare }
+  { id: "terminal" as Tab, label: "Terminal", icon: TerminalSquare },
+  { id: "administration" as Tab, label: "Administration", icon: Mail }
 ];
 const active = ref<Tab>("veeam"); const status = ref<any>(); const loading = ref(false); const error = ref(""); const query = ref("");
 const theme = ref<ThemeId>(readThemePreference());
@@ -19,6 +20,7 @@ const expandedStorage = ref<Set<string>>(new Set());
 const storageQuery = ref("");
 const expandedHosts = ref<Set<string>>(new Set());
 const expandedVpns = ref<Set<string>>(new Set());
+const testEmailLoading = ref(false); const testEmailSuccess = ref(""); const testEmailError = ref("");
 const sessionFilters = ref({ job: "", status: "", type: "", startedFrom: "", startedTo: "", endedFrom: "", endedTo: "" });
 watch(theme, (value) => {
   document.documentElement.dataset.theme = value;
@@ -31,7 +33,7 @@ async function api<T>(url: string, init?: RequestInit): Promise<T> {
   const data = await response.json(); if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`); return data;
 }
 async function refresh() {
-  if (active.value === "terminal") return; loading.value = true; error.value = "";
+  if (active.value === "terminal" || active.value === "administration") return; loading.value = true; error.value = "";
   try {
     if (active.value === "veeam") [sessions.value, storage.value, growth.value] = await Promise.all([api<any[]>("/api/veeam/sessions"), api<any>("/api/veeam-one/storage-usage"), api<any>("/api/veeam-one/storage-usage/growth")]);
     if (active.value === "vmware") vcenter.value = await api<any[]>("/api/vcenter/tree");
@@ -54,7 +56,15 @@ async function changeVpn(vpn: any) {
   } catch (e) { error.value = (e as Error).message; }
 }
 async function capture() { loading.value = true; try { await api("/api/veeam-one/storage-usage/capture", { method: "POST", body: "{}" }); await refresh(); } catch (e) { error.value = (e as Error).message; loading.value = false; } }
-function selectTab(tab: Tab) { active.value = tab; query.value = ""; refresh(); }
+async function sendTestEmail() {
+  testEmailLoading.value = true; testEmailSuccess.value = ""; testEmailError.value = "";
+  try {
+    const result = await api<{ recipient: string }>("/api/admin/test-email", { method: "POST", body: "{}" });
+    testEmailSuccess.value = `Wiadomość testowa została wysłana na ${result.recipient}.`;
+  } catch (e) { testEmailError.value = (e as Error).message; }
+  finally { testEmailLoading.value = false; }
+}
+function selectTab(tab: Tab) { active.value = tab; query.value = ""; error.value = ""; refresh(); }
 function toggleStorage(vmId: string) {
   const next = new Set(expandedStorage.value);
   next.has(vmId) ? next.delete(vmId) : next.add(vmId);
@@ -138,14 +148,14 @@ onMounted(async () => { try { status.value = await api("/api/status"); } catch {
       <div class="system-state"><span class="pulse"></span><span>API online</span><span class="divider"></span><span>{{ lastRefresh ? `Aktualizacja ${lastRefresh.toLocaleTimeString('pl-PL', { hour: '2-digit', minute: '2-digit' })}` : 'Ładowanie danych' }}</span><label class="theme-picker"><Palette :size="16" /><select v-model="theme" aria-label="Kolorystyka panelu"><option v-for="option in themeOptions" :key="option.id" :value="option.id">{{ option.label }}</option></select></label></div>
     </header>
     <nav class="tabs" aria-label="Systemy infrastruktury">
-      <button v-for="tab in tabs" :key="tab.id" :class="{ active: active === tab.id }" @click="selectTab(tab.id)"><component :is="tab.icon" :size="18" /><span>{{ tab.label }}</span><i v-if="status" :class="status.integrations[tab.id === 'vmware' ? 'vmware' : tab.id] ? 'on' : 'off'"></i></button>
+      <button v-for="tab in tabs" :key="tab.id" :class="{ active: active === tab.id }" @click="selectTab(tab.id)"><component :is="tab.icon" :size="18" /><span>{{ tab.label }}</span><i v-if="status && tab.id !== 'administration' && tab.id !== 'terminal'" :class="status.integrations[tab.id === 'vmware' ? 'vmware' : tab.id] ? 'on' : 'off'"></i></button>
     </nav>
     <main>
       <div v-if="active !== 'terminal'" class="page-head">
-        <div><p class="eyebrow">{{ active.toUpperCase() }} / CONTROL</p><h1>{{ tabs.find(t => t.id === active)?.label }}</h1><p>{{ active === 'veeam' ? 'Sesje backupu i wykorzystanie przestrzeni maszyn wirtualnych.' : active === 'vmware' ? 'Inwentarz vCenter i operacje zasilania maszyn.' : active === 'sophos' ? 'Stan i aktywacja tuneli IPsec.' : 'Przestrzeń klastrów ONTAP, wolumeny i SVM.' }}</p></div>
-        <button class="secondary" :disabled="loading" @click="refresh"><RefreshCw :size="16" :class="{ spin: loading }" />Odśwież</button>
+        <div><p class="eyebrow">{{ active.toUpperCase() }} / CONTROL</p><h1>{{ tabs.find(t => t.id === active)?.label }}</h1><p>{{ active === 'veeam' ? 'Sesje backupu i wykorzystanie przestrzeni maszyn wirtualnych.' : active === 'vmware' ? 'Inwentarz vCenter i operacje zasilania maszyn.' : active === 'sophos' ? 'Stan i aktywacja tuneli IPsec.' : active === 'netapp' ? 'Przestrzeń klastrów ONTAP, wolumeny i SVM.' : 'Ustawienia operacyjne i test konfiguracji powiadomień e-mail.' }}</p></div>
+        <button v-if="active !== 'administration'" class="secondary" :disabled="loading" @click="refresh"><RefreshCw :size="16" :class="{ spin: loading }" />Odśwież</button>
       </div>
-      <div v-if="active !== 'terminal' && status && !configured" class="notice"><TriangleAlert :size="19" /><div><strong>Integracja nie jest skonfigurowana</strong><span>Uzupełnij odpowiednie zmienne w pliku .env i uruchom ponownie kontener API.</span></div></div>
+      <div v-if="active !== 'terminal' && active !== 'administration' && status && !configured" class="notice"><TriangleAlert :size="19" /><div><strong>Integracja nie jest skonfigurowana</strong><span>Uzupełnij odpowiednie zmienne w pliku .env i uruchom ponownie kontener API.</span></div></div>
       <div v-if="error" class="notice error"><WifiOff :size="19" /><div><strong>Nie udało się pobrać danych</strong><span>{{ error }}</span></div></div>
 
       <template v-if="active === 'veeam'">
@@ -241,6 +251,18 @@ onMounted(async () => { try { status.value = await api("/api/status"); } catch {
 
       <template v-if="active === 'netapp'">
         <section class="cluster-list"><article v-for="cluster in clusters" :key="cluster.name" class="panel cluster"><div class="cluster-head"><div class="cluster-name"><span><HardDrive :size="19" /></span><div><h2>{{ cluster.name }}</h2><small>{{ cluster.url }}</small></div></div><div class="cluster-stats"><span><b>{{ cluster.aggregates.length }}</b> agregatów</span><span><b>{{ cluster.volumes.length }}</b> wolumenów</span><span><b>{{ cluster.svms.length }}</b> SVM</span></div></div><div class="volume-list"><div v-for="volume in cluster.volumes" :key="volume.uuid" class="volume"><div><strong>{{ volume.name }}</strong><span>{{ volume.svm?.name || '—' }}</span></div><div class="volume-usage"><span>{{ volume.space?.percent_used || 0 }}%</span><div><i :style="{ width: `${volume.space?.percent_used || 0}%` }"></i></div></div><span>{{ fmtBytes(volume.space?.used) }} / {{ fmtBytes(volume.space?.size) }}</span><span class="badge" :class="statusClass(volume.state)">{{ volume.state }}</span></div></div></article><div v-if="!clusters.length" class="empty-card">Brak klastrów do wyświetlenia</div></section>
+      </template>
+      <template v-if="active === 'administration'">
+        <section class="panel administration-panel">
+          <div class="panel-head"><div><h2>Test powiadomień e-mail</h2><span>Sprawdza działanie konfiguracji SMTP z pliku .env</span></div><span class="badge">SMTP</span></div>
+          <div class="administration-content">
+            <div class="administration-icon"><Mail :size="22" /></div>
+            <div class="administration-copy"><strong>Adres odbiorcy i serwer SMTP</strong><p>Testowa wiadomość zostanie wysłana na adres z <code>SNAPSHOT_ALERT_EMAIL_TO</code>. Ustawienia serwera pochodzą ze zmiennych <code>SMTP_*</code>. Naciśnięcie przycisku wysyła prawdziwy e-mail z tymi samymi szczegółami diagnostycznymi i załącznikami logów co alert o błędzie snapshotu.</p></div>
+            <button class="primary" :disabled="testEmailLoading" @click="sendTestEmail"><Mail :size="16" :class="{ spin: testEmailLoading }" />{{ testEmailLoading ? 'Wysyłanie…' : 'Wyślij testowy e-mail' }}</button>
+          </div>
+          <div v-if="testEmailSuccess" class="admin-result success" role="status">{{ testEmailSuccess }}</div>
+          <div v-if="testEmailError" class="admin-result failure" role="alert">{{ testEmailError }}</div>
+        </section>
       </template>
       <TerminalPanel v-if="active === 'terminal'" :theme="theme" />
     </main>
